@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import theme from '../../theme'; // adjust path
 import { formatCurrency } from '../../LoansContext';
 
-export default function TotalLiabilityCard({ total }) {
+export default function TotalLiability({ total }) {
   return (
     <View style={styles.topCard}>
       <Text style={styles.topCardLabel}>Total Liability</Text>

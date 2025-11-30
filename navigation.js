@@ -5,7 +5,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import DashboardScreen from './screens/Dashboard/Dashboard';
-import Screen2 from './screens/Screen2';
+import Addloan from './screens/AddLoan';
 import theme from './theme';
 import { LoansProvider } from './LoansContext';
 
@@ -49,8 +49,8 @@ export default function RootNavigator() {
             options={{ title: 'LoanTracker' }}
           />
           <Stack.Screen
-            name="Screen2"
-            component={Screen2}
+            name="Addloan"
+            component={Addloan}
             options={{ title: 'Add Loan' }}
           />
         </Stack.Navigator>

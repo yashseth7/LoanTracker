@@ -33,15 +33,24 @@ export function LoansProvider({ children }) {
     loadLoans();
   }, []);
 
-  // Persist whenever loans change
+  // Persist loans when updated
   useEffect(() => {
-    if (loading) return; // skip first render
+    if (loading) return; // prevent saving empty on first render
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loans)).catch((e) =>
       console.warn('Failed to save loans', e)
     );
   }, [loans, loading]);
 
-  const addLoan = ({ name, lender, remainingAmount }) => {
+  // UPDATED addLoan to save all fields
+  const addLoan = ({
+    name,
+    lender,
+    remainingAmount,
+    interestRate,
+    emiAmount,
+    dueDate,
+    emiDayOfMonth,
+  }) => {
     setLoans((prev) => [
       ...prev,
       {
@@ -49,6 +58,10 @@ export function LoansProvider({ children }) {
         name,
         lender,
         remainingAmount,
+        interestRate,
+        emiAmount,
+        dueDate,
+        emiDayOfMonth,
       },
     ]);
   };
@@ -60,7 +73,12 @@ export function LoansProvider({ children }) {
 
   return (
     <LoansContext.Provider
-      value={{ loans, addLoan, totalLiability, loading }}
+      value={{
+        loans,
+        addLoan,
+        totalLiability,
+        loading,
+      }}
     >
       {children}
     </LoansContext.Provider>

@@ -8,11 +8,12 @@ import {
   ActivityIndicator,
   View,
 } from 'react-native';
-import theme from '../../theme'; // change to '../../theme' if needed
+import theme from '../../theme';
 
-import TotalLiabilityCard from './TotalLiabilityCard';
+import TotalLiability from './TotalLiability'
 import LoansTable from './LoansTable';
-import { useLoans } from '../../LoansContext'; // or '../../LoansContext'
+import UpcomingEmis from './UpcomingEmis';
+import { useLoans } from '../../LoansContext';
 
 export default function DashboardScreen({ navigation }) {
   const { loans, totalLiability, loading } = useLoans();
@@ -30,15 +31,22 @@ export default function DashboardScreen({ navigation }) {
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
-      <Text style={styles.title}>LoanTracker Dashboard</Text>
+      <Text style={styles.title}>Loan Tracker</Text>
       <Text style={styles.subtitle}>Welcome yash 👋</Text>
 
-      <TotalLiabilityCard total={totalLiability} />
+      {/* Total liability summary */}
+      <TotalLiability total={totalLiability} />
+
+      {/* Upcoming EMIs – now uses loans from props */}
+      <UpcomingEmis loans={loans} />
+
+      {/* Loans table */}
       <LoansTable loans={loans} />
 
+      {/* CTA to add a new loan */}
       <TouchableOpacity
         style={styles.button}
-        onPress={() => navigation.navigate('Screen2')}
+        onPress={() => navigation.navigate('Addloan')}
       >
         <Text style={styles.buttonText}>Add Loan</Text>
       </TouchableOpacity>

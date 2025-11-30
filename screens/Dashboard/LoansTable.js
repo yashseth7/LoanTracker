@@ -1,7 +1,21 @@
+// screens/LoansTable.js
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import theme from '../../theme'; // adjust path
 import { formatCurrency } from '../../LoansContext';
+
+const getDueDay = (dueDate) => {
+  if (!dueDate) return '-';
+
+  const parsed = new Date(dueDate);
+  if (isNaN(parsed.getTime())) {
+    // if it's not a valid date string, just show as-is
+    return dueDate;
+  }
+
+  const day = parsed.getDate(); // 1–31
+  return String(day); // e.g. "30"
+};
 
 export default function LoansTable({ loans }) {
   if (!loans || loans.length === 0) {
@@ -16,24 +30,36 @@ export default function LoansTable({ loans }) {
 
   return (
     <View style={styles.tableContainer}>
+      {/* Header */}
       <View style={styles.tableHeaderRow}>
         <Text style={[styles.tableHeaderText, styles.colName]}>Loan</Text>
-        <Text style={[styles.tableHeaderText, styles.colLender]}>Lender</Text>
-        <Text style={[styles.tableHeaderText, styles.colAmount]}>
-          Remaining
-        </Text>
+        <Text style={[styles.tableHeaderText, styles.colAmount]}>Balance</Text>
+        <Text style={[styles.tableHeaderText, styles.colRate]}>Rate</Text>
+        <Text style={[styles.tableHeaderText, styles.colEmi]}>EMI</Text>
+        <Text style={[styles.tableHeaderText, styles.colDue]}>Due</Text>
       </View>
 
+      {/* Rows */}
       {loans.map((loan) => (
         <View key={loan.id} style={styles.tableRow}>
           <Text style={[styles.tableCellText, styles.colName]}>
             {loan.name}
           </Text>
-          <Text style={[styles.tableCellText, styles.colLender]}>
-            {loan.lender}
-          </Text>
+
           <Text style={[styles.tableCellText, styles.colAmount]}>
             {formatCurrency(loan.remainingAmount)}
+          </Text>
+
+          <Text style={[styles.tableCellText, styles.colRate]}>
+            {loan.interestRate ? `${loan.interestRate}%` : '-'}
+          </Text>
+
+          <Text style={[styles.tableCellText, styles.colEmi]}>
+            {loan.emiAmount ? formatCurrency(loan.emiAmount) : '-'}
+          </Text>
+
+          <Text style={[styles.tableCellText, styles.colDue]}>
+            {getDueDay(loan.dueDate)}
           </Text>
         </View>
       ))}
@@ -48,6 +74,8 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     marginBottom: theme.spacing.xl,
   },
+
+  /* Header */
   tableHeaderRow: {
     flexDirection: 'row',
     paddingHorizontal: theme.spacing.lg,
@@ -55,6 +83,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#252A3A',
   },
+  tableHeaderText: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  /* Row */
   tableRow: {
     flexDirection: 'row',
     paddingHorizontal: theme.spacing.lg,
@@ -62,25 +97,32 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1C2132',
   },
-  tableHeaderText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
   tableCellText: {
     color: theme.colors.text,
-    fontSize: 13,
+    fontSize: 12,
   },
+
+  /* Column widths */
   colName: {
-    flex: 1.4,
-  },
-  colLender: {
     flex: 1,
   },
   colAmount: {
+    flex: 1.2,
+  },
+  colRate: {
+    flex: 0.8,
+    textAlign: 'center',
+  },
+  colEmi: {
     flex: 1,
     textAlign: 'right',
   },
+  colDue: {
+    flex: 0.7,
+    textAlign: 'right',
+  },
+
+  /* Empty state */
   emptyContainer: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
