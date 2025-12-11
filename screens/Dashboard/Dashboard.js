@@ -7,16 +7,19 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   View,
+  Alert,
 } from 'react-native';
 import theme from '../../theme';
 
-import TotalLiability from './TotalLiability'
+import TotalLiability from './TotalLiability';
 import LoansTable from './LoansTable';
+import PaidEmis from './PaidEmis';
 import UpcomingEmis from './UpcomingEmis';
+import MonthlyEmiTracker from './MonthlyEmiTracker';
 import { useLoans } from '../../LoansContext';
 
 export default function DashboardScreen({ navigation }) {
-  const { loans, totalLiability, loading } = useLoans();
+  const { loans, totalLiability, loading, deleteLoan } = useLoans();
 
   if (loading) {
     return (
@@ -26,28 +29,40 @@ export default function DashboardScreen({ navigation }) {
     );
   }
 
+  // --- EDIT ---
+  const handleEditLoan = loan => {
+    navigation.navigate('EditLoan', { loanId: loan.id });
+  };
+
+  // --- DELETE ---
+  const handleDeleteLoan = loan => {
+    Alert.alert('Delete Loan', `Are you sure you want to delete "${loan.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteLoan(loan.id),
+      },
+    ]);
+  };
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      <Text style={styles.title}>Loan Tracker</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <Text style={styles.subtitle}>Welcome yash 👋</Text>
 
       {/* Total liability summary */}
       <TotalLiability total={totalLiability} />
+      <MonthlyEmiTracker />
 
-      {/* Upcoming EMIs – now uses loans from props */}
+      {/* Upcoming EMIs */}
       <UpcomingEmis loans={loans} />
 
-      {/* Loans table */}
-      <LoansTable loans={loans} />
+      {/* Loans table - PASS ACTION HANDLERS */}
+      <LoansTable loans={loans} onEditLoan={handleEditLoan} onDeleteLoan={handleDeleteLoan} />
+      <PaidEmis />
 
       {/* CTA to add a new loan */}
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('Addloan')}
-      >
+      <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Addloan')}>
         <Text style={styles.buttonText}>Add Loan</Text>
       </TouchableOpacity>
     </ScrollView>

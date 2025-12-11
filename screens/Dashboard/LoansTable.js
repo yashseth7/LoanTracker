@@ -1,23 +1,33 @@
 // screens/LoansTable.js
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import theme from '../../theme'; // adjust path
-import { formatCurrency } from '../../LoansContext';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import theme from '../../theme';
+import { formatCurrency, getEmiStats } from '../../LoansContext';
 
-const getDueDay = (dueDate) => {
+const getDueDay = dueDate => {
   if (!dueDate) return '-';
 
   const parsed = new Date(dueDate);
   if (isNaN(parsed.getTime())) {
-    // if it's not a valid date string, just show as-is
-    return dueDate;
+    return dueDate; // fallback if weird format
   }
 
-  const day = parsed.getDate(); // 1–31
-  return String(day); // e.g. "30"
+  return String(parsed.getDate()); // "30"
 };
 
-export default function LoansTable({ loans }) {
+// For sorting by due date (earliest first)
+const getDueSortValue = dueDate => {
+  if (!dueDate) return Number.POSITIVE_INFINITY;
+
+  const parsed = new Date(dueDate);
+  if (isNaN(parsed.getTime())) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return parsed.getTime();
+};
+
+export default function LoansTable({ loans, onEditLoan, onDeleteLoan }) {
   if (!loans || loans.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -28,58 +38,128 @@ export default function LoansTable({ loans }) {
     );
   }
 
+  // 🔽 Sort loans by due date before rendering
+  const sortedLoans = [...loans].sort(
+    (a, b) => getDueSortValue(a.dueDate) - getDueSortValue(b.dueDate),
+  );
+
   return (
-    <View style={styles.tableContainer}>
-      {/* Header */}
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Active Loans</Text>
+        <Text style={styles.subtitle}>{sortedLoans.length} running</Text>
+      </View>
+
+      {/* Column headers */}
       <View style={styles.tableHeaderRow}>
         <Text style={[styles.tableHeaderText, styles.colName]}>Loan</Text>
-        <Text style={[styles.tableHeaderText, styles.colAmount]}>Balance</Text>
         <Text style={[styles.tableHeaderText, styles.colRate]}>Rate</Text>
         <Text style={[styles.tableHeaderText, styles.colEmi]}>EMI</Text>
         <Text style={[styles.tableHeaderText, styles.colDue]}>Due</Text>
+        <Text style={[styles.tableHeaderText, styles.colActions]}>Action</Text>
       </View>
 
       {/* Rows */}
-      {loans.map((loan) => (
-        <View key={loan.id} style={styles.tableRow}>
-          <Text style={[styles.tableCellText, styles.colName]}>
-            {loan.name}
-          </Text>
+      {sortedLoans.map(loan => {
+        const stats = getEmiStats
+          ? getEmiStats(loan)
+          : {
+              totalEmis: null,
+              emisPaidCount: loan.emisPaidCount ?? 0,
+              emisRemaining: null,
+              progressPct: 0,
+            };
 
-          <Text style={[styles.tableCellText, styles.colAmount]}>
-            {formatCurrency(loan.remainingAmount)}
-          </Text>
+        const progressText =
+          stats.totalEmis != null
+            ? `${stats.emisPaidCount}/${stats.totalEmis} EMIs paid`
+            : `${stats.emisPaidCount} EMIs paid`;
 
-          <Text style={[styles.tableCellText, styles.colRate]}>
-            {loan.interestRate ? `${loan.interestRate}%` : '-'}
-          </Text>
+        return (
+          <View key={loan.id} style={styles.rowWrapper}>
+            {/* Top row: table style */}
+            <View style={styles.tableRow}>
+              <Text style={[styles.tableCellText, styles.colName]} numberOfLines={1}>
+                {loan.name}
+              </Text>
 
-          <Text style={[styles.tableCellText, styles.colEmi]}>
-            {loan.emiAmount ? formatCurrency(loan.emiAmount) : '-'}
-          </Text>
+              <Text style={[styles.tableCellText, styles.colRate]}>
+                {loan.interestRate ? `${loan.interestRate}%` : '-'}
+              </Text>
 
-          <Text style={[styles.tableCellText, styles.colDue]}>
-            {getDueDay(loan.dueDate)}
-          </Text>
-        </View>
-      ))}
+              <Text style={[styles.tableCellText, styles.colEmi]}>
+                {loan.emiAmount ? formatCurrency(loan.emiAmount) : '-'}
+              </Text>
+
+              <Text style={[styles.tableCellText, styles.colDue]}>{getDueDay(loan.dueDate)}</Text>
+
+              {/* ACTIONS */}
+              <View style={styles.colActions}>
+                {/* EDIT BUTTON (Pencil) */}
+                <TouchableOpacity
+                  onPress={() => onEditLoan && onEditLoan(loan)}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.editIcon}>✏️</Text>
+                </TouchableOpacity>
+
+                {/* DELETE BUTTON (X) */}
+                <TouchableOpacity
+                  onPress={() => onDeleteLoan && onDeleteLoan(loan)}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.deleteText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Bottom: EMI progress bar */}
+            <View style={styles.progressRow}>
+              <Text style={styles.progressLabel}>
+                {progressText}
+                {stats.progressPct ? ` (${stats.progressPct}%)` : ''}
+              </Text>
+              <View style={styles.progressBarBackground}>
+                <View style={[styles.progressBarFill, { width: `${stats.progressPct || 0}%` }]} />
+              </View>
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tableContainer: {
+  // outer card
+  card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
-    paddingVertical: theme.spacing.sm,
+    padding: theme.spacing.lg,
     marginBottom: theme.spacing.xl,
+    ...((theme.shadow && theme.shadow.card) || {}),
   },
 
-  /* Header */
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.sm,
+  },
+  title: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  subtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+  },
+
   tableHeaderRow: {
     flexDirection: 'row',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: '#252A3A',
   },
@@ -89,40 +169,75 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Row */
+  rowWrapper: {
+    marginTop: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: '#1C2132',
+    paddingHorizontal: theme.spacing.sm,
+    backgroundColor: 'rgba(10,15,31,0.4)',
+  },
+
   tableRow: {
     flexDirection: 'row',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1C2132',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xs,
   },
+
   tableCellText: {
     color: theme.colors.text,
     fontSize: 12,
   },
 
-  /* Column widths */
-  colName: {
-    flex: 1,
-  },
-  colAmount: {
-    flex: 1.2,
-  },
-  colRate: {
-    flex: 0.8,
-    textAlign: 'center',
-  },
-  colEmi: {
-    flex: 1,
-    textAlign: 'right',
-  },
-  colDue: {
-    flex: 0.7,
-    textAlign: 'right',
+  // column sizes
+  colName: { flex: 1.4 },
+  colRate: { flex: 0.6, textAlign: 'center' },
+  colEmi: { flex: 1, textAlign: 'center' },
+  colDue: { flex: 0.6, textAlign: 'center' },
+  colActions: {
+    flex: 0.9,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
   },
 
-  /* Empty state */
+  actionButton: { paddingHorizontal: 4 },
+
+  editIcon: {
+    fontSize: 14,
+    color: theme.colors.accent,
+  },
+
+  deleteText: {
+    color: theme.colors.danger,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // progress bar row
+  progressRow: {
+    marginTop: theme.spacing.xs,
+  },
+  progressLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  progressBarBackground: {
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#1C2132',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: theme.colors.primarySoft,
+  },
+
+  // empty state
   emptyContainer: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,

@@ -52,20 +52,20 @@
 
 const theme = {
   colors: {
-    background: '#0B0A14',       // deep dark purple-black
-    card: '#141322',             // glassy dark card
+    background: '#0B0A14', // deep dark purple-black
+    card: '#141322', // glassy dark card
 
-    primary: '#7B61FF',          // bright purple (action)
-    primarySoft: '#9C85FF',      // softer purple (buttons)
+    primary: '#7B61FF', // bright purple (action)
+    primarySoft: '#9C85FF', // softer purple (buttons)
 
-    text: '#F5F2FF',             // soft white with purple tint
-    textMuted: '#A79EC8',        // desaturated lavender
+    text: '#F5F2FF', // soft white with purple tint
+    textMuted: '#A79EC8', // desaturated lavender
 
-    accent: '#2DE5E0',           // neon teal highlight
-    accent2: '#FFD86B',          // warm gold for money values
+    accent: '#2DE5E0', // neon teal highlight
+    accent2: '#FFD86B', // warm gold for money values
 
-    danger: '#FF5C8A',           // reddish-pink warning
-    success: '#3DFFB5',          // bright mint green
+    danger: '#FF5C8A', // reddish-pink warning
+    success: '#3DFFB5', // bright mint green
   },
 
   spacing: {

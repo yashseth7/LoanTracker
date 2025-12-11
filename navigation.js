@@ -5,7 +5,11 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import DashboardScreen from './screens/Dashboard/Dashboard';
+import LossRecoveryScreen from './screens/PNL/LossRecoveryScreen';
+import { TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Addloan from './screens/AddLoan';
+import EditLoan from './screens/EditLoan';
 import theme from './theme';
 import { LoansProvider } from './LoansContext';
 
@@ -46,12 +50,29 @@ export default function RootNavigator() {
           <Stack.Screen
             name="Dashboard"
             component={DashboardScreen}
-            options={{ title: 'LoanTracker' }}
+            options={({ navigation }) => ({
+              title: 'LoanTracker',
+              headerRight: () => (
+                <View style={{ flexDirection: 'row', gap: 18 }}>
+                  {/* Loan Dashboard icon */}
+                  <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}>
+                    <Ionicons name="home-outline" size={22} color={theme.colors.text} />
+                  </TouchableOpacity>
+
+                  {/* PNL Tracker icon */}
+                  <TouchableOpacity onPress={() => navigation.navigate('LossRecovery')}>
+                    <Ionicons name="stats-chart-outline" size={22} color={theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
+              ),
+            })}
           />
+          <Stack.Screen name="Addloan" component={Addloan} options={{ title: 'Add Loan' }} />
+          <Stack.Screen name="EditLoan" component={EditLoan} options={{ title: 'Edit Loan' }} />
           <Stack.Screen
-            name="Addloan"
-            component={Addloan}
-            options={{ title: 'Add Loan' }}
+            name="LossRecovery"
+            component={LossRecoveryScreen}
+            options={{ title: 'PNL Tracker' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

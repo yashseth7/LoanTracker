@@ -1,12 +1,15 @@
-// screens/Addloan.js
-import React, { useState } from 'react';
+// screens/EditLoan.js
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import theme from '../theme';
 import { useLoans } from '../LoansContext';
 
-export default function Addloan({ navigation }) {
-  const { addLoan } = useLoans();
+export default function EditLoan({ navigation, route }) {
+  const { loans, updateLoan } = useLoans();
+  const { loanId } = route.params;
+
+  const existingLoan = loans.find(l => l.id === loanId);
 
   const [name, setName] = useState('');
   const [lender, setLender] = useState('');
@@ -14,12 +17,46 @@ export default function Addloan({ navigation }) {
   const [interestRate, setInterestRate] = useState('');
   const [minPayment, setMinPayment] = useState('');
   const [totalEmis, setTotalEmis] = useState('');
-
-  const [dueDate, setDueDate] = useState(''); // stored as string (YYYY-MM-DD)
+  const [dueDate, setDueDate] = useState('');
   const [pickerDate, setPickerDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
 
-  const handleAddLoan = () => {
+  useEffect(() => {
+    if (!existingLoan) return;
+
+    setName(existingLoan.name || '');
+    setLender(existingLoan.lender || '');
+    setRemainingAmount(
+      existingLoan.remainingAmount != null ? String(existingLoan.remainingAmount) : '',
+    );
+    setInterestRate(existingLoan.interestRate != null ? String(existingLoan.interestRate) : '');
+    setMinPayment(existingLoan.emiAmount != null ? String(existingLoan.emiAmount) : '');
+    setTotalEmis(existingLoan.totalEmis != null ? String(existingLoan.totalEmis) : '');
+    setDueDate(existingLoan.dueDate || '');
+
+    if (existingLoan.dueDate) {
+      const parsed = new Date(existingLoan.dueDate);
+      if (!isNaN(parsed.getTime())) {
+        setPickerDate(parsed);
+      }
+    }
+  }, [existingLoan]);
+
+  if (!existingLoan) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Loan not found</Text>
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.secondaryButtonText}>Back to Dashboard</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const handleSave = () => {
     if (
       !name.trim() ||
       !lender.trim() ||
@@ -50,7 +87,7 @@ export default function Addloan({ navigation }) {
       return;
     }
 
-    // total EMIs (optional, but if given must be valid)
+    // total EMIs (optional)
     let totalEmisNumber = null;
     if (totalEmis.trim()) {
       totalEmisNumber = Number(totalEmis);
@@ -60,35 +97,23 @@ export default function Addloan({ navigation }) {
       }
     }
 
-    // derive EMI day-of-month from due date if possible
     let emiDayOfMonth = null;
     const parsed = new Date(dueDate);
     if (!isNaN(parsed.getTime())) {
       emiDayOfMonth = parsed.getDate();
     }
 
-    addLoan({
+    updateLoan(loanId, {
       name: name.trim(),
       lender: lender.trim(),
-      remainingAmount: balanceNumber, // Balance
-      interestRate: rateNumber, // Rate
-      emiAmount: minPaymentNumber, // Min Pmt / EMI
-      dueDate: dueDate.trim(), // YYYY-MM-DD
-      emiDayOfMonth, // used by UpcomingEmis if available
-      totalEmis: totalEmisNumber != null ? totalEmisNumber : undefined,
+      remainingAmount: balanceNumber,
+      interestRate: rateNumber,
+      emiAmount: minPaymentNumber,
+      dueDate: dueDate.trim(),
+      emiDayOfMonth,
+      totalEmis: totalEmisNumber != null ? totalEmisNumber : null,
     });
 
-    // Clear form
-    setName('');
-    setLender('');
-    setRemainingAmount('');
-    setInterestRate('');
-    setMinPayment('');
-    setTotalEmis('');
-    setDueDate('');
-    setPickerDate(new Date());
-
-    // Go back to dashboard
     navigation.goBack();
   };
 
@@ -97,44 +122,28 @@ export default function Addloan({ navigation }) {
   };
 
   const handleChangeDate = (event, selectedDate) => {
-    // Android fires event.type === "dismissed" when cancelled
     setShowPicker(false);
-
     if (selectedDate) {
       setPickerDate(selectedDate);
-      const iso = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      const iso = selectedDate.toISOString().split('T')[0];
       setDueDate(iso);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Add Loan</Text>
-      <Text style={styles.subtitle}>Enter details of a new loan or liability.</Text>
+      <Text style={styles.title}>Edit Loan</Text>
+      <Text style={styles.subtitle}>Update your loan details.</Text>
 
       <Text style={styles.label}>Loan Name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Debt1 / Fibe Personal Loan"
-        placeholderTextColor={theme.colors.textMuted}
-        value={name}
-        onChangeText={setName}
-      />
+      <TextInput style={styles.input} value={name} onChangeText={setName} />
 
       <Text style={styles.label}>Lender</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. HDFC Bank"
-        placeholderTextColor={theme.colors.textMuted}
-        value={lender}
-        onChangeText={setLender}
-      />
+      <TextInput style={styles.input} value={lender} onChangeText={setLender} />
 
       <Text style={styles.label}>Balance Amount (₹)</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. 1400"
-        placeholderTextColor={theme.colors.textMuted}
         value={remainingAmount}
         onChangeText={setRemainingAmount}
         keyboardType="numeric"
@@ -143,8 +152,6 @@ export default function Addloan({ navigation }) {
       <Text style={styles.label}>Rate of Interest (%)</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. 8"
-        placeholderTextColor={theme.colors.textMuted}
         value={interestRate}
         onChangeText={setInterestRate}
         keyboardType="numeric"
@@ -153,8 +160,6 @@ export default function Addloan({ navigation }) {
       <Text style={styles.label}>Min Payment / EMI (₹)</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. 35 or 1500"
-        placeholderTextColor={theme.colors.textMuted}
         value={minPayment}
         onChangeText={setMinPayment}
         keyboardType="numeric"
@@ -163,11 +168,11 @@ export default function Addloan({ navigation }) {
       <Text style={styles.label}>Total EMIs</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. 36"
-        placeholderTextColor={theme.colors.textMuted}
         value={totalEmis}
         onChangeText={setTotalEmis}
         keyboardType="numeric"
+        placeholder="e.g. 36"
+        placeholderTextColor={theme.colors.textMuted}
       />
 
       <Text style={styles.label}>Due Date</Text>
@@ -186,8 +191,8 @@ export default function Addloan({ navigation }) {
         />
       )}
 
-      <TouchableOpacity style={styles.button} onPress={handleAddLoan}>
-        <Text style={styles.buttonText}>Save Loan</Text>
+      <TouchableOpacity style={styles.button} onPress={handleSave}>
+        <Text style={styles.buttonText}>Save Changes</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
