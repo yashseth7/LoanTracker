@@ -72,7 +72,20 @@ export default function RootNavigator() {
           <Stack.Screen
             name="LossRecovery"
             component={LossRecoveryScreen}
-            options={{ title: 'PNL Tracker' }}
+            options={({ navigation }) => ({
+              title: 'PNL Tracker',
+              headerBackVisible: false, // Remove back arrow
+              headerLeft: () => (
+                <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}>
+                  <Ionicons
+                    name="home-outline"
+                    size={22}
+                    color={theme.colors.text}
+                    style={{ paddingLeft: 10 }}
+                  />
+                </TouchableOpacity>
+              ),
+            })}
           />
         </Stack.Navigator>
       </NavigationContainer>
