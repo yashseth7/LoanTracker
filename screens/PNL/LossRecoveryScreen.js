@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, Dimensions, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Alert, Dimensions, FlatList, TextInput, Pressable } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../../theme';
 
-import PnLSummary from './components/PnLSummary';
 import ViewModeTabs from './components/ViewModeTabs';
 import PnLChart from './components/PnLChart';
-import PnLInputSection from './components/PnLInputSection';
 import EntriesList from './components/EntriesList';
-import BaselineCard from './components/BaselineCard';
 
-const STORAGE_KEY = 'pnl_entries_v1';
-const BASELINE_KEY = 'pnl_baseline_v1';
+// ✅ NEW: single-account storage keys
+const STORAGE_KEY = 'pnl_entries_single_v1';
+const BASELINE_KEY = 'pnl_baseline_single_v1';
+
+// ⛑️ OLD keys (for migration)
+const OLD_STORAGE_KEY = 'pnl_entries_v1';
+const OLD_BASELINE_KEY = 'pnl_baseline_v1';
 
 export const VIEW_MODES = {
   DAILY: 'DAILY',
@@ -19,25 +21,11 @@ export const VIEW_MODES = {
   MONTHLY: 'MONTHLY',
 };
 
-const monthNames = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const PAGE_SIZE = 20;
 
-// -------- helpers (shared) ----------
-
+// -------- helpers ----------
 export function getPnLColor(value) {
   if (value > 0) return theme.colors.success || '#4caf50';
   if (value < 0) return theme.colors.danger || '#f44336';
@@ -62,7 +50,7 @@ function getDateKey(dateStr, mode) {
 }
 
 function formatLabel(key, mode) {
-  if (mode === VIEW_MODES.DAILY) return key.slice(5);
+  if (mode === VIEW_MODES.DAILY) return key.slice(5); // MM-DD
   if (mode === VIEW_MODES.WEEKLY) return key.split('-W')[1] || key;
   const [, m] = key.split('-');
   const idx = Number(m) - 1;
@@ -70,7 +58,6 @@ function formatLabel(key, mode) {
 }
 
 // ---------- main screen ----------
-
 export default function LossRecoveryScreen() {
   const [entries, setEntries] = useState([]);
 
@@ -78,76 +65,123 @@ export default function LossRecoveryScreen() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const [selectedAccount, setSelectedAccount] = useState('intraday');
+  // ✅ single account inputs
   const [amountInput, setAmountInput] = useState('');
   const [viewMode, setViewMode] = useState(VIEW_MODES.DAILY);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [dateInput, setDateInput] = useState(todayStr);
 
-  const [baselineIntraday, setBaselineIntraday] = useState(0);
-  const [baselineSwing, setBaselineSwing] = useState(0);
-  const [baselineIntradayInput, setBaselineIntradayInput] = useState('');
-  const [baselineSwingInput, setBaselineSwingInput] = useState('');
+  // ✅ single baseline
+  const [baseline, setBaseline] = useState(0);
+  const [baselineInput, setBaselineInput] = useState('');
   const [baselineSaved, setBaselineSaved] = useState(false);
 
   const screenWidth = Dimensions.get('window').width - 32;
 
-  // ---- Load entries (with migration + cleanup) ----
+  // ---- Migration + Load (single account) ----
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
+        // 1) If NEW data exists, load it
+        const rawNew = await AsyncStorage.getItem(STORAGE_KEY);
+        if (rawNew) {
+          const parsed = JSON.parse(rawNew);
+          const arr = Array.isArray(parsed) ? parsed : [];
+          setEntries(arr);
+          return;
+        }
 
-        const parsed = JSON.parse(raw);
-        let arr = Array.isArray(parsed) ? parsed : [];
+        // 2) Otherwise try MIGRATE from OLD data
+        const rawOld = await AsyncStorage.getItem(OLD_STORAGE_KEY);
+        const rawOldBaseline = await AsyncStorage.getItem(OLD_BASELINE_KEY);
 
-        arr = arr
-          .map(e => {
-            const date = typeof e.date === 'string' ? e.date : '';
-            const account = e.account === 'intraday' || e.account === 'swing' ? e.account : null;
+        // migrate baseline: intraday+swing
+        if (rawOldBaseline) {
+          try {
+            const parsed = JSON.parse(rawOldBaseline) || {};
+            const intraday = Number(parsed.intraday) || 0;
+            const swing = Number(parsed.swing) || 0;
+            const mergedBaseline = Number((intraday + swing).toFixed(2));
+            setBaseline(mergedBaseline);
+            setBaselineInput(mergedBaseline ? String(mergedBaseline) : '');
+            setBaselineSaved(Boolean(parsed.saved || mergedBaseline !== 0));
+            await AsyncStorage.setItem(BASELINE_KEY, JSON.stringify(mergedBaseline));
+          } catch {
+            // ignore baseline migration errors
+          }
+        } else {
+          // try load new baseline (if any)
+          const rawBaselineNew = await AsyncStorage.getItem(BASELINE_KEY);
+          if (rawBaselineNew) {
+            const v = Number(JSON.parse(rawBaselineNew));
+            if (Number.isFinite(v)) {
+              setBaseline(v);
+              setBaselineInput(v ? String(v) : '');
+              setBaselineSaved(true);
+            }
+          }
+        }
 
-            let capital = e.capital;
-            if (capital === undefined && e.pnl !== undefined) capital = e.pnl;
+        if (!rawOld) return;
 
-            const capNum = typeof capital === 'number' ? capital : Number(capital);
+        const parsedOld = JSON.parse(rawOld);
+        const oldArr = Array.isArray(parsedOld) ? parsedOld : [];
 
-            if (!account) return null;
-            if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-            if (!Number.isFinite(capNum)) return null;
+        // Old shape: { id, date, account, capital }
+        // ✅ New single-account rule:
+        // - group by date
+        // - capital = (intraday capital if present) + (swing capital if present)
+        const byDate = {};
+        oldArr.forEach(e => {
+          const date = typeof e.date === 'string' ? e.date : '';
+          if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
 
-            return { id: e.id || `${date}-${account}`, date, account, capital: capNum };
-          })
-          .filter(Boolean);
+          let capital = e.capital;
+          if (capital === undefined && e.pnl !== undefined) capital = e.pnl;
+          const capNum = typeof capital === 'number' ? capital : Number(capital);
+          if (!Number.isFinite(capNum)) return;
 
-        setEntries(arr);
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+          if (!byDate[date]) byDate[date] = { intraday: 0, swing: 0 };
+          if (e.account === 'intraday') byDate[date].intraday = capNum;
+          if (e.account === 'swing') byDate[date].swing = capNum;
+        });
+
+        const migrated = Object.keys(byDate)
+          .sort()
+          .map(date => {
+            const total = Number((byDate[date].intraday + byDate[date].swing).toFixed(2));
+            return {
+              id: date,
+              date,
+              // keep a constant account label so your existing EntriesList row UI won’t crash
+              account: 'main',
+              capital: total,
+            };
+          });
+
+        setEntries(migrated);
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
       } catch (e) {
-        console.warn('Failed to load capital entries', e);
+        console.warn('Failed to load/migrate PnL entries', e);
       }
     })();
   }, []);
 
-  // ---- Load baseline ----
+  // ---- Load NEW baseline (if not already loaded via migration) ----
   useEffect(() => {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(BASELINE_KEY);
         if (!raw) return;
+        const v = Number(JSON.parse(raw));
+        if (!Number.isFinite(v)) return;
 
-        const parsed = JSON.parse(raw) || {};
-        const intraday = Number(parsed.intraday) || 0;
-        const swing = Number(parsed.swing) || 0;
-
-        setBaselineIntraday(intraday);
-        setBaselineSwing(swing);
-        setBaselineIntradayInput(intraday ? String(intraday) : '');
-        setBaselineSwingInput(swing ? String(swing) : '');
-
-        if (parsed.saved || intraday !== 0 || swing !== 0) setBaselineSaved(true);
+        setBaseline(v);
+        setBaselineInput(v ? String(v) : '');
+        setBaselineSaved(true);
       } catch (e) {
-        console.warn('Failed to load baseline capital', e);
+        console.warn('Failed to load baseline', e);
       }
     })();
   }, []);
@@ -162,17 +196,18 @@ export default function LossRecoveryScreen() {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.warn('Failed to save capital entries', e);
+      console.warn('Failed to save entries', e);
     }
   };
 
-  const persistBaseline = async (intraday, swing) => {
+  const persistBaseline = async value => {
     try {
-      await AsyncStorage.setItem(BASELINE_KEY, JSON.stringify({ intraday, swing, saved: true }));
+      await AsyncStorage.setItem(BASELINE_KEY, JSON.stringify(value));
     } catch (e) {
-      console.warn('Failed to save baseline capital', e);
+      console.warn('Failed to save baseline', e);
     }
   };
+
   const handleDeleteItem = async item => {
     const updated = entries.filter(e => e.id !== item.id);
     await persistEntries(updated);
@@ -184,6 +219,11 @@ export default function LossRecoveryScreen() {
   };
 
   const handleSaveEntry = () => {
+    if (!baselineSaved) {
+      Alert.alert('Set baseline first', 'Please save your starting capital before adding entries.');
+      return;
+    }
+
     const trimmedDate = dateInput.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
       Alert.alert('Invalid date', 'Please enter date in YYYY-MM-DD format.');
@@ -204,14 +244,15 @@ export default function LossRecoveryScreen() {
 
     const dateKey = trimmedDate;
 
-    const filtered = entries.filter(e => !(e.date === dateKey && e.account === selectedAccount));
+    // ✅ only one entry per date
+    const filtered = entries.filter(e => e.date !== dateKey);
 
     const updated = [
       ...filtered,
       {
-        id: `${dateKey}-${selectedAccount}`,
+        id: dateKey,
         date: dateKey,
-        account: selectedAccount,
+        account: 'main', // constant label
         capital: value,
       },
     ];
@@ -221,23 +262,19 @@ export default function LossRecoveryScreen() {
   };
 
   const handleSaveBaseline = () => {
-    const intradayVal = parseFloat((baselineIntradayInput || '0').replace(',', '.'));
-    const swingVal = parseFloat((baselineSwingInput || '0').replace(',', '.'));
+    const val = parseFloat((baselineInput || '0').replace(',', '.'));
+    const finalVal = Number.isNaN(val) ? 0 : val;
 
-    const intradayFinal = Number.isNaN(intradayVal) ? 0 : intradayVal;
-    const swingFinal = Number.isNaN(swingVal) ? 0 : swingVal;
-
-    setBaselineIntraday(intradayFinal);
-    setBaselineSwing(swingFinal);
-    persistBaseline(intradayFinal, swingFinal);
+    setBaseline(finalVal);
+    persistBaseline(finalVal);
     setBaselineSaved(true);
-    Alert.alert('Saved', 'Starting capital (USDT) saved for both accounts.');
+    Alert.alert('Saved', 'Starting capital (USDT) saved.');
   };
 
   const handleResetPnL = useCallback(() => {
     Alert.alert(
       'Reset PnL Data',
-      'This will permanently delete all capital entries and starting capital for both accounts. This action cannot be undone.',
+      'This will permanently delete all entries and starting capital. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -245,18 +282,15 @@ export default function LossRecoveryScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AsyncStorage.multiRemove([STORAGE_KEY, BASELINE_KEY]);
+              await AsyncStorage.multiRemove([STORAGE_KEY, BASELINE_KEY, OLD_STORAGE_KEY, OLD_BASELINE_KEY]);
 
               setEntries([]);
-              setBaselineIntraday(0);
-              setBaselineSwing(0);
-              setBaselineIntradayInput('');
-              setBaselineSwingInput('');
+              setBaseline(0);
+              setBaselineInput('');
               setBaselineSaved(false);
 
               setAmountInput('');
               setDateInput(todayStr);
-              setSelectedAccount('intraday');
 
               Alert.alert('Reset complete', 'PnL data has been cleared.');
             } catch (e) {
@@ -269,47 +303,26 @@ export default function LossRecoveryScreen() {
     );
   }, [todayStr]);
 
-  // ---- Chart + totals ----
+  // ---- Chart + totals (single account) ----
   const chartState = useMemo(() => {
     const validEntries = entries.filter(
-      e =>
-        e &&
-        typeof e.date === 'string' &&
-        (e.account === 'intraday' || e.account === 'swing') &&
-        typeof e.capital === 'number' &&
-        Number.isFinite(e.capital),
+      e => e && typeof e.date === 'string' && typeof e.capital === 'number' && Number.isFinite(e.capital),
     );
 
-    if (!validEntries.length) return { labels: [], data: [], deltaIntraday: 0, deltaSwing: 0 };
+    if (!validEntries.length) return { labels: [], data: [], delta: 0, latestCapital: null };
 
-    const sorted = [...validEntries].sort((a, b) => {
-      if (a.date === b.date) return a.account.localeCompare(b.account);
-      return a.date.localeCompare(b.date);
-    });
+    const sorted = [...validEntries].sort((a, b) => a.date.localeCompare(b.date));
+    const latest = sorted[sorted.length - 1]?.capital ?? null;
 
-    let currentIntraday = baselineIntraday;
-    let currentSwing = baselineSwing;
-
-    const perDateRecovery = [];
-
-    sorted.forEach(entry => {
-      if (entry.account === 'intraday') currentIntraday = entry.capital;
-      else currentSwing = entry.capital;
-
-      const recovery = currentIntraday - baselineIntraday + (currentSwing - baselineSwing);
-
-      if (Number.isFinite(recovery)) {
-        perDateRecovery.push({ date: entry.date, recovery: Number(recovery.toFixed(2)) });
-      }
-    });
-
-    const deltaIntraday = Number((currentIntraday - baselineIntraday).toFixed(2));
-    const deltaSwing = Number((currentSwing - baselineSwing).toFixed(2));
+    const perDatePnl = sorted.map(e => ({
+      date: e.date,
+      pnl: Number((e.capital - baseline).toFixed(2)),
+    }));
 
     const byPeriod = {};
-    perDateRecovery.forEach(r => {
+    perDatePnl.forEach(r => {
       const key = getDateKey(r.date, viewMode);
-      byPeriod[key] = r.recovery;
+      byPeriod[key] = r.pnl; // last value within the period
     });
 
     const periodKeys = Object.keys(byPeriod).sort();
@@ -324,26 +337,24 @@ export default function LossRecoveryScreen() {
       }
     });
 
-    return { labels, data, deltaIntraday, deltaSwing };
-  }, [entries, viewMode, baselineIntraday, baselineSwing]);
+    const delta = latest === null ? 0 : Number((latest - baseline).toFixed(2));
+    return { labels, data, delta, latestCapital: latest };
+  }, [entries, viewMode, baseline]);
 
-  const { labels, data, deltaIntraday, deltaSwing } = chartState;
+  const { labels, data, delta, latestCapital } = chartState;
 
   // entries sorted (desc) for UI list
   const sortedEntries = useMemo(
     () =>
       [...entries].sort((a, b) => {
-        if (a.date === b.date) return a.account.localeCompare(b.account);
+        if (a.date === b.date) return 0;
         return b.date.localeCompare(a.date);
       }),
     [entries],
   );
 
   // visible slice for infinite scroll
-  const visibleEntries = useMemo(
-    () => sortedEntries.slice(0, visibleCount),
-    [sortedEntries, visibleCount],
-  );
+  const visibleEntries = useMemo(() => sortedEntries.slice(0, visibleCount), [sortedEntries, visibleCount]);
 
   const handleLoadMore = useCallback(() => {
     if (loadingMore) return;
@@ -356,7 +367,6 @@ export default function LossRecoveryScreen() {
     }, 150);
   }, [loadingMore, visibleCount, sortedEntries.length]);
 
-  // ---- UI: single FlatList (this fixes scrolling) ----
   return (
     <FlatList
       style={styles.container}
@@ -371,38 +381,72 @@ export default function LossRecoveryScreen() {
       ListFooterComponent={<EntriesList.Footer loadingMore={loadingMore} />}
       ListHeaderComponent={
         <View>
-          <Text style={styles.title}>PNL Tracker / Loss Recovery</Text>
+          <Text style={styles.title}> PNL Tracker</Text>
 
-          <PnLSummary
-            baselineIntraday={baselineIntraday}
-            baselineSwing={baselineSwing}
-            deltaIntraday={deltaIntraday}
-            deltaSwing={deltaSwing}
-          />
+          {/* ✅ Simple single-account summary */}
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Baseline</Text>
+              <Text style={styles.summaryValue}>{baselineSaved ? `${baseline}` : '-'}</Text>
+            </View>
 
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Latest Capital</Text>
+              <Text style={styles.summaryValue}>{latestCapital === null ? '-' : `${latestCapital}`}</Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>PnL</Text>
+              <Text style={[styles.summaryValue, { color: getPnLColor(delta) }]}>{baselineSaved ? `${delta}` : '-'}</Text>
+            </View>
+          </View>
+
+          {/* ✅ Baseline setup */}
           {!baselineSaved && (
-            <BaselineCard
-              baselineIntraday={baselineIntraday}
-              baselineSwing={baselineSwing}
-              baselineIntradayInput={baselineIntradayInput}
-              baselineSwingInput={baselineSwingInput}
-              setBaselineIntradayInput={setBaselineIntradayInput}
-              setBaselineSwingInput={setBaselineSwingInput}
-              deltaIntraday={deltaIntraday}
-              deltaSwing={deltaSwing}
-              onSaveBaseline={handleSaveBaseline}
-            />
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Set Starting Capital (USDT)</Text>
+              <TextInput
+                value={baselineInput}
+                onChangeText={setBaselineInput}
+                placeholder="e.g. 1000"
+                placeholderTextColor={theme.colors.textMuted}
+                keyboardType="decimal-pad"
+                style={styles.input}
+              />
+              <Pressable style={styles.primaryBtn} onPress={handleSaveBaseline}>
+                <Text style={styles.primaryBtnText}>Save Baseline</Text>
+              </Pressable>
+            </View>
           )}
 
-          <PnLInputSection
-            selectedAccount={selectedAccount}
-            setSelectedAccount={setSelectedAccount}
-            amountInput={amountInput}
-            setAmountInput={setAmountInput}
-            dateInput={dateInput}
-            setDateInput={setDateInput}
-            onSave={handleSaveEntry}
-          />
+          {/* ✅ Add entry (single account) */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Add / Update Capital</Text>
+
+            <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={dateInput}
+              onChangeText={setDateInput}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.input}
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.fieldLabel}>Capital (USDT)</Text>
+            <TextInput
+              value={amountInput}
+              onChangeText={setAmountInput}
+              placeholder="e.g. 1250.5"
+              placeholderTextColor={theme.colors.textMuted}
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <Pressable style={styles.primaryBtn} onPress={handleSaveEntry}>
+              <Text style={styles.primaryBtnText}>Save Entry</Text>
+            </Pressable>
+          </View>
 
           <ViewModeTabs viewMode={viewMode} setViewMode={setViewMode} />
           <PnLChart labels={labels} data={data} width={screenWidth} />
@@ -413,11 +457,9 @@ export default function LossRecoveryScreen() {
               Showing {Math.min(visibleCount, sortedEntries.length)} / {sortedEntries.length}
             </Text>
           </View>
-          <View style={styles.resetContainer}>
-            <Text style={styles.resetHint}>
-              Use this if you want to start fresh or restart tracking.
-            </Text>
 
+          <View style={styles.resetContainer}>
+            <Text style={styles.resetHint}>Use this if you want to start fresh or restart tracking.</Text>
             <Text style={styles.resetButton} onPress={handleResetPnL}>
               Reset PnL Data
             </Text>
@@ -451,6 +493,71 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
   },
+
+  summaryCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card || theme.colors.background,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 4,
+  },
+  summaryLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+  },
+  summaryValue: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  card: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card || theme.colors.background,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 10,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.inputBg || 'transparent',
+  },
+  primaryBtn: {
+    marginTop: 12,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+
   sectionHeader: {
     marginTop: 8,
     marginBottom: 8,
